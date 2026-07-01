@@ -1,0 +1,22 @@
+.env
+.env.local
+*-sa.json
+*-credentials.json
+plan.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+.DS_Store
+
+# personal photo catalogs
+*_labels.json
+vision_labels.json
+
+# memory store personal data
+memory_store/memory.db
+memory_store/chroma/
+
+# research reports
+deep_research_reports/
