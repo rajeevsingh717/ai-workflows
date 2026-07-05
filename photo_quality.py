@@ -1,117 +1,70 @@
-"""Google Drive download with OAuth2 authentication."""
-import os
-import re
-import tempfile
+"""Photo quality scoring: blur, darkness, perceptual hash, near-duplicate grouping."""
+import math
 from pathlib import Path
 
-TOKEN_PATH = Path.home() / ".config" / "gdrive" / "token.json"
-SECRETS_PATH = Path.home() / ".config" / "gdrive" / "client_secrets.json"
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+
+def laplacian_blur_score(path: str) -> float:
+    """Higher = sharper. < 50 is noticeably blurry."""
+    import cv2
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        return 0.0
+    return float(cv2.Laplacian(img, cv2.CV_64F).var())
 
 
-def extract_file_id(url: str) -> str:
-    """Extract a Google Drive file ID from any Drive URL format."""
-    patterns = [
-        r"/file/d/([a-zA-Z0-9_-]+)",
-        r"[?&]id=([a-zA-Z0-9_-]+)",
-        r"/d/([a-zA-Z0-9_-]+)",
-    ]
-    for pattern in patterns:
-        m = re.search(pattern, url)
-        if m:
-            return m.group(1)
-    # If it looks like a raw file ID (no slashes, right length)
-    if re.match(r"^[a-zA-Z0-9_-]{25,}$", url):
-        return url
-    raise ValueError(f"Could not extract file ID from: {url}")
+def darkness_score(path: str) -> float:
+    """Mean brightness 0-255. < 40 is very dark."""
+    import cv2
+    img = cv2.imread(path)
+    if img is None:
+        return 128.0
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    return float(hsv[:, :, 2].mean())
 
 
-def get_drive_service():
-    """Return an authenticated Drive API service. Opens browser on first run."""
-    try:
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-        from google_auth_oauthlib.flow import InstalledAppFlow
-        from googleapiclient.discovery import build
-    except ImportError:
-        raise RuntimeError(
-            "Google Drive packages not installed.\n"
-            "Run: pip install google-api-python-client google-auth-oauthlib"
-        )
-
-    if not SECRETS_PATH.exists():
-        raise RuntimeError(
-            f"Google OAuth credentials not found at {SECRETS_PATH}\n\n"
-            "Setup steps:\n"
-            "  1. Go to console.cloud.google.com → your project\n"
-            "  2. APIs & Services → Enable APIs → enable 'Google Drive API'\n"
-            "  3. APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID\n"
-            "  4. Application type: Desktop app → Download JSON\n"
-            f"  5. Save the downloaded file to: {SECRETS_PATH}"
-        )
-
-    creds = None
-    if TOKEN_PATH.exists():
-        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
-
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(str(SECRETS_PATH), SCOPES)
-            creds = flow.run_local_server(port=0)
-        TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        TOKEN_PATH.write_text(creds.to_json())
-
-    return build("drive", "v3", credentials=creds)
+def perceptual_hash(path: str, hash_size: int = 8) -> str:
+    """Returns a hex perceptual hash string for the image."""
+    import cv2
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        return "0" * (hash_size * hash_size // 4)
+    img = cv2.resize(img, (hash_size + 1, hash_size))
+    diff = img[:, 1:] > img[:, :-1]
+    bits = diff.flatten()
+    val = 0
+    for b in bits:
+        val = (val << 1) | int(b)
+    hex_len = hash_size * hash_size // 4
+    return format(val, f"0{hex_len}x")
 
 
-def download_file(url_or_id: str) -> tuple[str, str, str]:
+def _hamming(a: str, b: str) -> int:
+    return bin(int(a, 16) ^ int(b, 16)).count("1")
+
+
+def group_near_duplicates(
+    hashes: dict[str, str],
+    time_buckets: dict[str, str],
+    max_distance: int = 5,
+) -> dict[str, str]:
     """
-    Download a file from Google Drive to a temp file.
-    Returns (local_path, filename, file_id).
+    Group UUIDs whose perceptual hashes are within max_distance AND taken in
+    the same hour. Returns {uuid: group_id} where group_id is the first UUID
+    seen in the group.
     """
-    from googleapiclient.http import MediaIoBaseDownload
-    import io
+    uuids = list(hashes.keys())
+    group_of: dict[str, str] = {}
 
-    file_id = extract_file_id(url_or_id)
-    service = get_drive_service()
+    for i, u in enumerate(uuids):
+        if u in group_of:
+            continue
+        group_of[u] = u
+        for v in uuids[i + 1:]:
+            if v in group_of:
+                continue
+            if time_buckets.get(u) != time_buckets.get(v):
+                continue
+            if _hamming(hashes[u], hashes[v]) <= max_distance:
+                group_of[v] = u
 
-    # Get file metadata
-    meta = service.files().get(
-        fileId=file_id,
-        fields="name,mimeType,size"
-    ).execute()
-
-    filename = meta.get("name", file_id)
-    mime_type = meta.get("mimeType", "")
-
-    # Determine suffix
-    suffix = Path(filename).suffix.lower()
-    if not suffix:
-        if "pdf" in mime_type:
-            suffix = ".pdf"
-        elif "image" in mime_type:
-            suffix = ".jpg"
-        else:
-            suffix = ".bin"
-
-    # Download to temp file
-    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-    request = service.files().get_media(fileId=file_id)
-    downloader = MediaIoBaseDownload(tmp, request)
-
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-
-    tmp.flush()
-    return tmp.name, filename, file_id
-
-
-def auth_flow() -> None:
-    """Run the one-time OAuth browser flow and save the token."""
-    if TOKEN_PATH.exists():
-        TOKEN_PATH.unlink()  # force fresh login
-    get_drive_service()
-    print(f"Authentication successful. Token saved to {TOKEN_PATH}")
+    return group_of
