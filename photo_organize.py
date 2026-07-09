@@ -710,6 +710,57 @@ def backup_cmd(args: argparse.Namespace) -> None:
     print(f"  gs://{bucket_name}/metadata/catalog/")
 
 
+def sort_folder_cmd(args: argparse.Namespace) -> None:
+    out_path = Path(args.labels)
+    if not out_path.exists():
+        sys.exit(f"Labels file not found: {out_path}")
+
+    labels: dict = json.loads(out_path.read_text())
+    folder_entries = {k: v for k, v in labels.items() if k.startswith("folder:")}
+
+    if not folder_entries:
+        sys.exit("No folder entries found in labels file.")
+
+    moved = skipped = missing = 0
+    updated_labels = dict(labels)
+
+    for key, entry in folder_entries.items():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("status") == "deleted":
+            continue
+
+        src_path = Path(entry.get("source_path", ""))
+        if not src_path.exists():
+            missing += 1
+            continue
+
+        label = entry.get("label", "other")
+        dest_dir = src_path.parent / f"Vision-{label.capitalize()}"
+        dest_dir.mkdir(exist_ok=True)
+        dest_path = dest_dir / src_path.name
+
+        if dest_path.exists():
+            skipped += 1
+            continue
+
+        src_path.rename(dest_path)
+        updated_labels[key]["source_path"] = str(dest_path)
+        moved += 1
+
+        if moved % 100 == 0:
+            print(f"  ...{moved} moved")
+            out_path.write_text(json.dumps(updated_labels, indent=2, default=str))
+
+    out_path.write_text(json.dumps(updated_labels, indent=2, default=str))
+    print(f"\nDone.")
+    print(f"  Moved:          {moved}")
+    print(f"  Already sorted: {skipped}")
+    print(f"  Missing:        {missing}")
+    print(f"\nSource paths updated in {out_path}")
+    print("Now browse the Vision-* folders in Finder, delete what you don't want, then run backup.")
+
+
 def main():
     load_dotenv()
     p = argparse.ArgumentParser(description="Rule-based photo organizer for Apple Photos.")
@@ -744,6 +795,10 @@ def main():
     pvf.add_argument("--model", default="llama3.2-vision", help="Ollama model to use")
     pvf.add_argument("--owner", default="", help="Photo owner name e.g. 'rajeev' or 'anu'")
     pvf.set_defaults(func=vision_folder_cmd)
+
+    psf = sub.add_parser("sort-folder", help="Move photos into Vision-* subfolders based on labels")
+    psf.add_argument("labels", help="Labels JSON file (e.g. anu_labels.json)")
+    psf.set_defaults(func=sort_folder_cmd)
 
     pb = sub.add_parser("backup", help="Upload photos to GCS bucket organized by vision label")
     pb.add_argument("labels", help="rajeev_vision_labels.json path")
