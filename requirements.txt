@@ -20,3 +20,7 @@ opencv-python>=4.8.0
 imagehash>=4.3.0
 Pillow>=10.0.0
 google-cloud-storage>=2.10.0
+
+# Portfolio analyzer workflow
+pandas>=2.0.0
+matplotlib>=3.8.0

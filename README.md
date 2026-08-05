@@ -11,6 +11,7 @@ A collection of personal AI automation tools running locally on Mac.
 | [Memory Store](#memory-store) | `memory_store/cli.py` | Personal knowledge base — sync notes from Notion, search semantically |
 | [Photo Organizer](#photo-organizer) | `photo_organize.py` | Classify, album, and back up Apple Photos using local AI |
 | [Deep Research](#deep-research) | `main.py` | Multi-iteration internet research reports via LangGraph |
+| [Portfolio Analyzer](#portfolio-analyzer) | `portfolio_analyzer.py` / `market_check.py` / `trade_analyzer.py` | Analyze a Fidelity CSV export; live market check via Claude; look up your own past buy/sell prices |
 
 ---
 
@@ -41,6 +42,11 @@ GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 # Deep Research
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-sonnet-4-6   # optional, this is the default
+
+# Portfolio Analyzer (market_check.py only — portfolio_analyzer.py needs nothing)
+FINNHUB_API_KEY=...                 # free at finnhub.io/register
+TELEGRAM_BOT_TOKEN=...              # optional — pushes the daily summary to Telegram
+TELEGRAM_CHAT_ID=...                # optional — see "Telegram push" below
 ```
 
 ---
@@ -392,4 +398,149 @@ Each iteration:
 ## Community Perspectives (Reddit)
 ## Open Questions / Limitations
 ## Sources
+```
+
+---
+
+## Portfolio Analyzer
+
+Four scripts that work together to analyze a Fidelity account export:
+
+- `portfolio_analyzer.py` — one-shot analysis of a CSV export: allocation, concentration risk, performance, tax-location check, charts
+- `market_check.py` — optional daily add-on that marks current holdings to live market prices and asks Claude to flag anything worth a second look
+- `trade_analyzer.py` — no AI, just your own buy/sell history per symbol next to a live quote, so you're never guessing what price you paid last time
+- `telegram_listener.py` — remote control for `trade_analyzer.py` from your phone via Telegram
+
+All four are informational only — **none of them ever place a trade or tell you to buy/sell anything.** Everything under `fidelity_data/` (your actual account data, reports, charts) is gitignored and never leaves your machine; no data is uploaded anywhere.
+
+### Prerequisites
+
+**A Fidelity CSV export.** From Fidelity.com: Accounts & Trade → Portfolio → Positions → **Download** (or **Export**). Save it into `fidelity_data/` in this repo — the filename pattern `Portfolio_Positions_<date>.csv` (Fidelity's default) is what both scripts look for.
+
+**Finnhub API key** (for `market_check.py` only) — free at [finnhub.io/register](https://finnhub.io/register), free tier is 60 calls/min which comfortably covers a few dozen holdings. Add it to `.env` as `FINNHUB_API_KEY`.
+
+**Anthropic API key** (for `market_check.py` only) — same `ANTHROPIC_API_KEY` used by Deep Research.
+
+**Telegram bot** (optional, for pushing the daily summary to your phone instead of only a local file):
+1. Message [@BotFather](https://t.me/BotFather) in Telegram → `/newbot` → copy the token it gives you into `.env` as `TELEGRAM_BOT_TOKEN`
+2. Generate one update so Telegram has something to show: message your new bot directly (any text works), or — for a channel instead of a DM — add the bot as a channel admin (needs "Post Messages" permission) and post any message there
+3. Look up your `chat_id`:
+   ```bash
+   python3 -c "
+   from dotenv import load_dotenv; load_dotenv()
+   import os, httpx
+   token = os.getenv('TELEGRAM_BOT_TOKEN')
+   print(httpx.get(f'https://api.telegram.org/bot{token}/getUpdates').json())
+   "
+   ```
+   The `chat.id` field in the response is what goes in `.env` as `TELEGRAM_CHAT_ID`.
+
+If both vars are set, `market_check.py` pushes the header + Claude's summary (not the full raw-data dump) to that chat every run. If unset, it silently skips Telegram and just writes the local report file as before.
+
+### `portfolio_analyzer.py` — one-shot CSV analysis
+
+```bash
+python portfolio_analyzer.py                      # auto-picks the newest
+                                                    # fidelity_data/Portfolio_Positions_*.csv
+python portfolio_analyzer.py path/to/export.csv    # or point at one explicitly
+```
+
+Produces, all written to `fidelity_data/output/`:
+
+- **Overview** — total value, breakdown by account (with tax status: taxable brokerage vs. Roth/Traditional IRA/HSA/401(k)), unique holdings
+- **Asset allocation** — by class (stock/ETF/mutual fund/money market/target-date) and by sector, as horizontal bar charts
+- **Concentration risk** — single positions >10% of the portfolio, sectors >30% (excluding inherently-diversified buckets like broad index funds), and overlapping funds doing the same job (e.g. holding both VOO and SPY)
+- **Performance** — gain/loss % per position, top winners/losers, overall portfolio return
+- **Tax-location check** — flags high-dividend/high-income funds sitting in a taxable account that would usually be more efficient in a Roth/IRA/HSA
+- **Charts** — asset allocation, sector breakdown, account distribution, top 10 holdings (PNGs)
+- **Observations** — plain data-driven notes, explicitly framed as not-advice
+
+Sector/asset-class classification is a hand-maintained table (`SECURITY_INFO`) in the script itself — no live data lookup, no API key needed to run this one. If a new export has a symbol the table doesn't recognize, the script prints exactly what to add.
+
+### `market_check.py` — live morning check
+
+```bash
+python market_check.py
+```
+
+Runs a mark-to-market pass against your current holdings and an LLM summary:
+
+1. Loads the newest `positions_enriched_*.csv` (output of `portfolio_analyzer.py` — run that first)
+2. Checks Finnhub's market-status endpoint; if the market's closed (weekend, holiday, after-hours) it prints that and exits without calling the LLM, so you never get a summary based on stale prices
+3. Pulls a live quote per holding, recomputes portfolio value/allocation % with today's prices
+4. Re-runs the same concentration/overlap/tax-location rules from `portfolio_analyzer.py` against the live numbers
+5. Sends the day's movers plus any already-flagged positions to Claude, which writes 4-8 bullet observations — hard-blocked by its system prompt from ever saying "buy," "sell," or naming a share count or price target
+6. Saves the report to `fidelity_data/output/market_check_<date>_<time>.txt`
+7. If `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` are set, pushes the summary to Telegram too — otherwise this step is a silent no-op
+
+### Keeping transaction history over time
+
+Fidelity's transaction export only covers whatever date range you picked when downloading it — it's not a full history. To avoid silently losing older trades once they age out of your next export, `trade_analyzer.py` (and `telegram_listener.py`, through it) auto-merges every `Accounts_History*.csv` in `fidelity_data/order_transactions/` into a single deduplicated `master_transactions.csv` on every run, via `transaction_store.py`.
+
+**Workflow:** whenever you have a new export, just drop the CSV into `fidelity_data/order_transactions/` — no renaming, no manual merge step. The next time you run `trade_analyzer.py` or message the Telegram bot, new transactions are automatically folded into the master ledger (deduplicated by date/account/action/symbol/price/quantity/amount, so re-uploading overlapping date ranges is harmless — already-seen transactions are recognized and skipped, never double-counted). Nothing already in the ledger is ever removed just because a later export doesn't happen to include it.
+
+```bash
+python merge_transactions.py   # optional — merges and reports what was added,
+                                # useful right after uploading a new export if
+                                # you want to see the count before running anything else
+```
+
+### `trade_analyzer.py` — "what did I actually pay for this last time"
+
+```bash
+python trade_analyzer.py AMD    # full buy/sell history + live price for one symbol
+python trade_analyzer.py        # realized P&L summary across every symbol you've traded
+```
+
+No AI involved — this is a pure lookup tool for the very common problem of forgetting what price you paid last time you bought or sold something, so you can't tell if selling today would lock in a gain or a loss.
+
+Reads the accumulated `master_transactions.csv` (see "Keeping transaction history over time" above — export from Fidelity: Accounts & Trade → Activity & Orders → **Download**), FIFO-matches your buys to sells **per account per symbol** (tax lots are account-specific), and:
+
+- **Per symbol** (`python trade_analyzer.py AMD`) — every buy/sell in the export with date/price/account, a live quote next to each one showing the gain/loss if that lot were sold right now, which lots are still open, and which round-trips already closed with their realized gain/loss and holding period. Since the export only covers a fixed date range, any shares bought before that window won't have an exact price on record here — those are called out explicitly and backed up by Fidelity's own blended average cost basis (from `portfolio_analyzer.py`'s enriched CSV) so nothing is silently missing, just less precise.
+- **No symbol** (`python trade_analyzer.py`) — realized P&L total, win rate, avg winner/loser, total fees paid, dividends received, and your most-traded symbols, so you can see honestly whether frequent trading in a name has actually been costing you or not.
+
+`CVSA` is deliberately skipped for live quotes here too, for the same reason as in `market_check.py` — see `NO_QUOTE_SYMBOLS`.
+
+### `telegram_listener.py` — remote control from your phone
+
+`market_check.py`'s Telegram integration is one-way (script → your phone). This adds the other direction: message your bot and get `trade_analyzer.py` results back, without touching the laptop.
+
+```bash
+python telegram_listener.py   # foreground, for testing
+./setup_telegram_listener.sh  # installs as an always-on launchd daemon
+```
+
+Long-polls Telegram for new messages and replies with the same output `trade_analyzer.py` prints locally:
+
+| Message | Reply |
+|---|---|
+| `AMD` (or any symbol) | That symbol's full buy/sell history + live price |
+| `summary` | Realized P&L summary across everything you've traded |
+| `help` | Lists these commands |
+
+**Security:** only messages from your own `TELEGRAM_CHAT_ID` (set in `.env`) are ever acted on — anything from a different chat is logged locally and silently ignored, never replied to. Symbol input is validated against a strict pattern before being used, and every command maps to a fixed, pre-written function — there's no way to get it to run arbitrary code.
+
+**Reality check on "remote":** this is a local listener, not a cloud service. Your Mac still needs to be powered on, awake, and connected to the internet for a message to do anything — Telegram polling doesn't need any inbound ports opened, but it does need the process running. If you want something that works even with the Mac fully off, that requires actually hosting the scripts (and your Fidelity data) somewhere else, which is a different, bigger project — this keeps everything local by design, same as every other script in this repo.
+
+Installed via `setup_telegram_listener.sh` as `com.rajeevsingh.telegramlistener` — unlike the scheduled `market_check.py` job, this one uses `RunAtLoad` + `KeepAlive` so it starts immediately and relaunches itself if it ever crashes:
+
+```bash
+launchctl list | grep telegramlistener                                      # confirm it's running
+tail -f fidelity_data/output/telegram_listener.log                          # watch activity
+launchctl unload ~/Library/LaunchAgents/com.rajeevsingh.telegramlistener.plist   # stop it
+```
+
+### Running it automatically at market open
+
+`setup_launchd.sh` installs a macOS `launchd` job (`com.rajeevsingh.marketcheck.plist`) that runs `market_check.py` three times on weekdays — 9:35am (open), 12:30pm (midday), and 3:45pm (close), local time:
+
+```bash
+./setup_launchd.sh
+```
+
+```bash
+launchctl list | grep marketcheck                     # confirm it's loaded
+launchctl start com.rajeevsingh.marketcheck            # trigger a run right now, for testing
+tail -f fidelity_data/output/market_check.log          # watch stdout
+launchctl unload ~/Library/LaunchAgents/com.rajeevsingh.marketcheck.plist   # stop it
 ```

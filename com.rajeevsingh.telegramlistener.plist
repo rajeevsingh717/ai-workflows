@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.rajeevsingh.telegramlistener</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/rajeevsingh/ai_workflows/.venv/bin/python3</string>
+        <string>-u</string>
+        <string>/Users/rajeevsingh/ai_workflows/telegram_listener.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/rajeevsingh/ai_workflows</string>
+
+    <!-- Persistent listener, not a scheduled job: starts when loaded (and at
+         every login), and launchd relaunches it automatically if it ever
+         exits or crashes. Requires the Mac to stay on/awake to receive
+         Telegram messages — see README. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/rajeevsingh/ai_workflows/fidelity_data/output/telegram_listener.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/rajeevsingh/ai_workflows/fidelity_data/output/telegram_listener.error.log</string>
+</dict>
+</plist>

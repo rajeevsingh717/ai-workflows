@@ -20,3 +20,6 @@ memory_store/chroma/
 
 # research reports
 deep_research_reports/
+
+# personal financial data
+fidelity_data/
