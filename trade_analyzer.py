@@ -192,6 +192,62 @@ def get_live_price(symbol: str) -> float | None:
     return quote["c"] if quote else None
 
 
+def format_symbol_compact(symbol: str, txns: list[Txn], closed: list[ClosedTrade],
+                           open_lots: dict, positions_df: pd.DataFrame | None) -> str:
+    """Short summary for Telegram: live price, open-lot cost range with
+    best/worst case if sold now, realized total, and Fidelity's blended
+    all-accounts position. Skips the full transaction-by-transaction log —
+    use format_symbol_full() / print_symbol_history() for that."""
+    symbol = symbol.upper()
+    sym_txns = [t for t in txns if t.symbol == symbol and t.action in ("BUY", "SELL")]
+    if not sym_txns:
+        return f"No BUY/SELL transactions found for {symbol} in your transaction history."
+
+    live_price = get_live_price(symbol)
+    if symbol in NO_QUOTE_SYMBOLS:
+        price_line = " — live price skipped (ambiguous/private ticker)"
+    elif live_price:
+        price_line = f" — live {fmt_money(live_price)}"
+    else:
+        price_line = " — live price unavailable"
+
+    lines = [f"{friendly(symbol)} ({symbol}){price_line}"]
+
+    open_here = [lot for (acct_num, sym), q in open_lots.items() if sym == symbol for lot in q if lot.qty > 1e-6]
+    if open_here:
+        prices = [lot.price for lot in open_here]
+        qty_total = sum(lot.qty for lot in open_here)
+        avg_cost = sum(lot.price * lot.qty for lot in open_here) / qty_total
+        lines.append(f"\nOpen lots (this history): {qty_total:.2f} sh, avg cost {fmt_money(avg_cost)}, "
+                      f"range {fmt_money(min(prices))}–{fmt_money(max(prices))}")
+        if live_price:
+            best = min(open_here, key=lambda l: l.price)   # cheapest lot = biggest gain if sold
+            worst = max(open_here, key=lambda l: l.price)  # priciest lot = smallest gain/loss if sold
+            best_pct = (live_price - best.price) / best.price * 100 if best.price else float("nan")
+            worst_pct = (live_price - worst.price) / worst.price * 100 if worst.price else float("nan")
+            lines.append(f"  Best lot:  {fmt_money(best.price)} → {best_pct:+.1f}% if sold now")
+            if worst.price != best.price:
+                lines.append(f"  Worst lot: {fmt_money(worst.price)} → {worst_pct:+.1f}% if sold now")
+    else:
+        lines.append("\nNo open lots on record — everything bought in this history has been sold.")
+
+    sym_closed = [c for c in closed if c.symbol == symbol]
+    if sym_closed:
+        total_gain = sum(c.realized_gain for c in sym_closed)
+        lines.append(f"\nRealized (all-time): {total_gain:+.2f} across {len(sym_closed)} closed trade(s)")
+
+    if positions_df is not None:
+        rows = positions_df[positions_df["symbol"] == symbol]
+        if not rows.empty:
+            total_qty = rows["quantity"].sum()
+            total_cost = rows["cost_basis_total"].sum()
+            blended_avg = total_cost / total_qty if total_qty else float("nan")
+            lines.append(f"\nFidelity total (all accounts): {total_qty:.2f} sh @ avg {fmt_money(blended_avg)}")
+
+    lines.append("\n(reply \"full\" after the symbol for the complete transaction log)")
+    return "\n".join(lines)
+
+
 def print_symbol_history(symbol: str, txns: list[Txn], closed: list[ClosedTrade],
                           open_lots: dict, positions_df: pd.DataFrame | None):
     symbol = symbol.upper()

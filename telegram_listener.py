@@ -34,6 +34,7 @@ from dotenv import load_dotenv
 from market_check import find_latest_enriched_csv, send_telegram
 from trade_analyzer import (
     fifo_match,
+    format_symbol_compact,
     load_ledger,
     print_overall_summary,
     print_symbol_history,
@@ -48,9 +49,10 @@ SYMBOL_RE = re.compile(r"^[A-Z0-9]{1,10}(\*\*)?$")
 
 HELP_TEXT = (
     "Commands:\n"
-    "  <SYMBOL>  e.g. AMD  — buy/sell history + live price\n"
-    "  summary             — realized P&L summary across everything\n"
-    "  help                — this message"
+    "  <SYMBOL>       e.g. AMD  — compact summary: live price, open-lot cost range, realized total\n"
+    "  <SYMBOL> full  e.g. AMD full — full transaction-by-transaction log\n"
+    "  summary        — realized P&L summary across everything\n"
+    "  help           — this message"
 )
 
 
@@ -61,7 +63,7 @@ def _capture(fn, *args, **kwargs) -> str:
     return buf.getvalue()
 
 
-def run_symbol_lookup(symbol: str) -> str:
+def run_symbol_lookup(symbol: str, full: bool = False) -> str:
     txns = load_ledger(TXN_DIR)
     closed, open_lots, _ = fifo_match(txns)
     positions_df = None
@@ -70,7 +72,9 @@ def run_symbol_lookup(symbol: str) -> str:
         positions_df = pd.read_csv(positions_path)
     except SystemExit:
         pass
-    return _capture(print_symbol_history, symbol, txns, closed, open_lots, positions_df)
+    if full:
+        return _capture(print_symbol_history, symbol, txns, closed, open_lots, positions_df)
+    return format_symbol_compact(symbol, txns, closed, open_lots, positions_df)
 
 
 def run_summary() -> str:
@@ -95,9 +99,15 @@ def handle_message(text: str) -> str:
     candidate = text.upper().lstrip("/")
     if candidate.startswith("TRADE "):
         candidate = candidate[len("TRADE "):].strip()
+
+    full = False
+    if candidate.endswith(" FULL"):
+        full = True
+        candidate = candidate[:-len(" FULL")].strip()
+
     if SYMBOL_RE.match(candidate):
         try:
-            return run_symbol_lookup(candidate)
+            return run_symbol_lookup(candidate, full=full)
         except SystemExit as e:
             return f"Error: {e}"
 

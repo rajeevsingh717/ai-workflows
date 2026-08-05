@@ -514,7 +514,8 @@ Long-polls Telegram for new messages and replies with the same output `trade_ana
 
 | Message | Reply |
 |---|---|
-| `AMD` (or any symbol) | That symbol's full buy/sell history + live price |
+| `AMD` (or any symbol) | Compact summary: live price, open-lot cost range with best/worst case if sold now, realized total, Fidelity's blended all-accounts position — sized for a phone screen |
+| `AMD full` | The complete transaction-by-transaction log (what `trade_analyzer.py AMD` prints locally) |
 | `summary` | Realized P&L summary across everything you've traded |
 | `help` | Lists these commands |
 
