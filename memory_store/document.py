@@ -1,6 +1,7 @@
 """Classify and extract structured fields from documents using Claude."""
 import json
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -195,6 +196,8 @@ def process_file(source: str, doc_type_hint: str = None) -> dict:
 
     # ── 3. Extract text ──────────────────────────────────────────────────────
     suffix = Path(local_path).suffix.lower()
+    if suffix not in IMAGE_EXTS | {PDF_EXT}:
+        raise ValueError(f"Unsupported document type: {suffix or '(no extension)'}")
     file_type = "image" if suffix in IMAGE_EXTS else "pdf"
 
     if file_type == "pdf":
@@ -280,6 +283,3 @@ def _doc_type_to_domain(doc_type: str) -> str:
         "tax": "personal",
         "id": "personal",
     }.get(doc_type, "general")
-
-
-import re  # needed for is_drive check above

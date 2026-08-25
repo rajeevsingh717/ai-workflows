@@ -1,547 +1,474 @@
 # AI Workflows
 
-A collection of personal AI automation tools running locally on Mac.
+A collection of personal automation projects built in Python and designed primarily for macOS. The repository combines local processing, optional local AI through Ollama, cloud APIs where useful, and small command-line tools that can be run manually or scheduled with `launchd`.
 
----
+> [!IMPORTANT]
+> These projects handle personal photos, notes, documents, and financial exports. Runtime data and credentials are intentionally excluded from Git, but some workflows send selected data to external services. Review the [privacy boundaries](#privacy-boundaries) before using them.
 
-## Projects
+## Projects at a glance
 
-| Project | Entry point | What it does |
-|---|---|---|
-| [Memory Store](#memory-store) | `memory_store/cli.py` | Personal knowledge base — sync notes from Notion, search semantically |
-| [Photo Organizer](#photo-organizer) | `photo_organize.py` | Classify, album, and back up Apple Photos using local AI |
-| [Deep Research](#deep-research) | `main.py` | Multi-iteration internet research reports via LangGraph |
-| [Portfolio Analyzer](#portfolio-analyzer) | `portfolio_analyzer.py` / `market_check.py` / `trade_analyzer.py` | Analyze a Fidelity CSV export; live market check via Claude; look up your own past buy/sell prices |
+| Project | Main entry point | Purpose | Main external services |
+|---|---|---|---|
+| [Photo Organizer](#1-photo-organizer) | `photo_organize.py` | Classify, review, organize, and archive photos | Ollama, Apple Photos, optional GCS |
+| [Memory Store](#2-memory-store) | `memory_store/cli.py` | Store and search notes and structured document data | ChromaDB, optional Notion/Google Drive/Anthropic |
+| [Deep Research](#3-deep-research) | `main.py` | Iterative web research with reflection and cited Markdown reports | Anthropic, Tavily or DuckDuckGo, Reddit |
+| [Portfolio Toolkit](#4-portfolio-toolkit) | `portfolio_analyzer.py` and related scripts | Analyze Fidelity exports, monitor holdings, and query trade history | Finnhub, Anthropic, optional Telegram |
 
----
+## Repository architecture
 
-## Setup
+```mermaid
+flowchart LR
+    repo[AI Workflows]
+    repo --> photos[Photo Organizer]
+    repo --> memory[Memory Store]
+    repo --> research[Deep Research]
+    repo --> portfolio[Portfolio Toolkit]
+
+    photos --> p1[Local quality rules]
+    photos --> p2[Ollama vision labels]
+    photos --> p3[Photos albums / folders]
+    photos --> p4[Optional GCS archive]
+
+    memory --> m1[SQLite metadata]
+    memory --> m2[ChromaDB vectors]
+    memory --> m3[Structured document fields]
+
+    research --> r1[Plan]
+    research --> r2[Parallel search]
+    research --> r3[Analyze and reflect]
+    research --> r4[Markdown report]
+
+    portfolio --> f1[Positions analysis]
+    portfolio --> f2[Live market checks]
+    portfolio --> f3[Transaction ledger]
+    portfolio --> f4[Telegram lookup]
+```
+
+## Requirements
+
+- macOS for Apple Photos integration and the included `launchd` automations
+- Python 3 and `venv`
+- Ollama for local photo vision classification
+- API credentials only for the workflows that use external services
+
+## Installation
 
 ```bash
+git clone https://github.com/rajeevsingh717/ai-workflows.git
+cd ai-workflows
+
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-Copy `.env.example` to `.env` and fill in your keys:
-
-```bash
 cp .env.example .env
 ```
 
-Required keys per project:
+Add only the credentials needed for the projects you intend to run:
 
-```
-# Memory Store
-NOTION_TOKEN=secret_...
-
-# Photo Organizer
-GCS_BUCKET=your-bucket-name
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-
-# Deep Research
+```dotenv
+# Deep Research, document extraction, and live portfolio summaries
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-6   # optional, this is the default
+ANTHROPIC_MODEL=your-supported-model-name
 
-# Portfolio Analyzer (market_check.py only — portfolio_analyzer.py needs nothing)
-FINNHUB_API_KEY=...                 # free at finnhub.io/register
-TELEGRAM_BOT_TOKEN=...              # optional — pushes the daily summary to Telegram
-TELEGRAM_CHAT_ID=...                # optional — see "Telegram push" below
+# Optional Deep Research search provider; DuckDuckGo is the fallback
+TAVILY_API_KEY=tvly-...
+
+# Photo Organizer cloud archive
+GCS_BUCKET=your-photo-archive-bucket
+GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
+
+# Portfolio live quotes
+FINNHUB_API_KEY=your-finnhub-key
+
+# Optional portfolio notifications and remote trade lookup
+TELEGRAM_BOT_TOKEN=your-bot-token
+TELEGRAM_CHAT_ID=your-chat-id
+
+# Memory Store Notion integration
+NOTION_TOKEN=secret_...
+NOTION_DATABASE_ID=00000000000000000000000000000000
 ```
+
+Never commit `.env`, service-account JSON, exported account data, photo catalogs, generated reports, or local databases.
 
 ---
 
-## Memory Store
+## 1. Photo Organizer
 
-A local personal knowledge base. Pulls notes from Notion, stores them in SQLite + a local vector database, and lets you search semantically across everything.
+`photo_organize.py` supports two complementary workflows:
 
-**Local-first — no data leaves your machine.**
+1. A deterministic quality pass that uses metadata, blur, darkness, burst, and perceptual-duplicate rules.
+2. A richer local vision pass that uses `llama3.2-vision` through Ollama.
 
-### How it works
+Nothing is deleted automatically. The scripts create review queues, albums, or folders; deletion remains a manual decision.
 
-```
-Notion Notes [PT]
-       ↓
-  notion.py          ← fetches pages + block content via Notion API
-       ↓
-  store.py           ← writes to SQLite (structured) + ChromaDB (vectors)
-       ↓
-  cli.py             ← search, list, show
+### Example output
+
+![Photo Organizer example output](docs/images/photo-organizer-output.svg)
+
+*Synthetic preview of a local Ollama classification run; no personal photo data is included.*
+
+### Photo workflow
+
+```mermaid
+flowchart TD
+    source{Photo source}
+    source -->|Apple Photos| download[Download iCloud originals]
+    source -->|Finder folder| folder[Read local folder]
+
+    download --> vision[Classify with local Ollama vision]
+    folder --> vision
+    download --> rules[Optional quality and duplicate rules]
+
+    vision --> catalog[JSON catalog: label, description, objects, metadata]
+    rules --> plan[JSON action plan]
+
+    catalog --> albums[Create Vision-* albums]
+    catalog --> sort[Sort into Vision-* folders]
+    plan --> queues[Create keep/archive/delete-review albums]
+
+    albums --> review[Manual review]
+    sort --> review
+    queues --> review
+    review --> backup[Optional GCS backup by Vision-* label]
+    catalog --> backup
 ```
 
 ### Prerequisites
 
-**Notion integration token:**
+Install [Ollama](https://ollama.com), then pull and start the vision model:
 
-1. Go to [notion.so/profile/integrations](https://www.notion.so/profile/integrations)
-2. Click **New integration** → name it `memory-store` → Save
-3. Copy the `secret_...` token → paste into `.env` as `NOTION_TOKEN=secret_...`
-4. In Notion, open **Notes [PT]** → `...` menu → **Connect to** → select `memory-store`
-
-### Commands
-
-#### Sync from Notion
-
-Pull all notes from the **Notes [PT]** database into the local store. Safe to re-run — already-synced notes are updated, not duplicated.
-
-```bash
-python memory_store/cli.py sync-notion
-
-# Test with a small batch first
-python memory_store/cli.py sync-notion --limit 5
-```
-
-#### Search
-
-Semantic search — finds relevant notes even if the exact words don't match.
-
-```bash
-python memory_store/cli.py search "sql interview preparation"
-python memory_store/cli.py search "german grammar exercises"
-python memory_store/cli.py search "back pain treatment"
-
-# Filter by domain
-python memory_store/cli.py search "study plan" --domain work
-python memory_store/cli.py search "diet food" --domain personal
-
-# Return more results
-python memory_store/cli.py search "career goals" --n 10
-```
-
-**Domains:** `work` · `study` · `personal` · `health` · `ideas` · `general`
-
-#### List
-
-Browse all entries as a numbered index.
-
-```bash
-# All entries (most recent first)
-python memory_store/cli.py list
-
-# Filter by domain
-python memory_store/cli.py list --domain study
-python memory_store/cli.py list --domain work
-
-# Filter by date
-python memory_store/cli.py list --since 2026-01-01
-
-# Increase the limit
-python memory_store/cli.py list --limit 100
-
-# Show full content inline (good for piping to less)
-python memory_store/cli.py list --full
-python memory_store/cli.py list --domain personal --full | less
-```
-
-#### Show
-
-Display the full content of a single entry.
-
-```bash
-# By number from the list
-python memory_store/cli.py show 8
-
-# By title keyword (case-insensitive, first match wins)
-python memory_store/cli.py show "faang"
-python memory_store/cli.py show "food for anu"
-python memory_store/cli.py show "german class"
-python memory_store/cli.py show "meta interview"
-```
-
-#### Stats
-
-Overview of what's in the store.
-
-```bash
-python memory_store/cli.py stats
-```
-
-Example output:
-```
-Total entries: 22
-
-By domain:
-  study        10
-  work          5
-  personal      5
-  ideas         1
-  general       1
-
-By source:
-  notion       22
-```
-
-### Data model
-
-Each entry in `memory_store/memory.db`:
-
-| Field | Description |
-|---|---|
-| `id` | UUID (local) |
-| `source_type` | `notion` — more sources coming |
-| `source_id` | Notion page ID (used for dedup on re-sync) |
-| `title` | Page title |
-| `content` | Full extracted text from the page body |
-| `tags` | Multi-select tags from Notion |
-| `domain` | Inferred: `work`, `study`, `personal`, `health`, `ideas`, `general` |
-| `project` | Linked Notion project name (if set) |
-| `area` | Linked Notion area/resource name (if set) |
-| `source_url` | Notion page URL |
-| `created_at` | Original creation time in Notion |
-| `updated_at` | Last edited time in Notion |
-| `ingested_at` | When it was pulled into this store |
-| `metadata` | JSON blob with raw Notion metadata |
-
-Vectors live in `memory_store/chroma/` (local ChromaDB, `all-MiniLM-L6-v2` model, downloads once ~80MB).
-
-### File layout
-
-```
-memory_store/
-├── cli.py          ← entry point for all commands
-├── store.py        ← SQLite + ChromaDB read/write API
-├── ingest/
-│   └── notion.py   ← Notion API ingestion pipeline
-├── memory.db       ← SQLite database (created on first sync)
-└── chroma/         ← vector store (created on first sync)
-```
-
-### Planned sources
-
-- Voice memos / recordings (iPhone `.m4a` → Whisper transcript)
-- PDF files
-- Word documents (`.docx`)
-- Images (via Ollama vision — already used in Photo Organizer)
-
----
-
-## Photo Organizer
-
-A CLI tool to classify, organize, and archive Apple Photos using a local Ollama vision model and Google Cloud Storage (GCS).
-
-Photos are never deleted automatically — all deletions are done manually in Photos.app so you stay in full control.
-
-### Prerequisites
-
-**Ollama** — install from [ollama.com](https://ollama.com), then:
 ```bash
 ollama pull llama3.2-vision
-ollama serve   # run in a separate terminal before using vision commands
+ollama serve
 ```
 
-**GCP service account** at `~/.config/gcp/photo-archiver-sa.json` with `roles/storage.objectAdmin` on your bucket.
+For Apple Photos access, grant the terminal application permission under **System Settings → Privacy & Security → Photos**. For GCS backup, configure `GCS_BUCKET` and Google application credentials in `.env`.
 
-**Photos.app access** — grant Terminal full access in **System Settings → Privacy & Security → Photos**.
-
-### Commands
-
-#### `download` — Pull iCloud originals to Mac
+### Common commands
 
 ```bash
+# Download iCloud-only originals to the Mac
 python photo_organize.py download
+
+# Test local vision classification on a small batch
+python photo_organize.py vision --limit 50 --out vision_labels.json
+
+# Run or resume a full classification while preventing sleep
+caffeinate -i python photo_organize.py vision --out vision_labels.json
+
+# Classify a normal Finder folder without Photos.app
+python photo_organize.py vision-folder /path/to/photos --out vision_labels.json
+
+# Create Photos.app albums from the catalog
+python photo_organize.py vision-albums vision_labels.json
+
+# Move folder-based media into Vision-* subfolders
+python photo_organize.py sort-folder vision_labels.json
+
+# Upload reviewed files to GCS by vision label
+python photo_organize.py backup vision_labels.json --prefix archive-owner
 ```
 
-Downloads all iCloud-only photos locally. Required before running `vision` on iCloud photos. Check disk space first — 1000 photos can be several GB.
+The vision catalog also acts as a searchable index. A filename can be found directly, while fields such as description, objects, setting, event type, people, and detected text allow simple text search across the archive.
 
-#### `vision` — Classify photos with AI
-
-```bash
-# Full run (use caffeinate to prevent sleep)
-caffeinate -i python photo_organize.py vision --out rajeev_vision_labels.json
-
-# Test on a small batch first
-python photo_organize.py vision --limit 50 --out rajeev_vision_labels.json
-
-# Resume a previous run (already-classified photos are skipped)
-python photo_organize.py vision --out rajeev_vision_labels.json
-```
-
-Options:
-
-| Flag | Default | Description |
-|---|---|---|
-| `--out` | `vision_labels.json` | Output JSON file |
-| `--limit N` | none | Only classify first N photos |
-| `--model` | `llama3.2-vision` | Ollama model to use |
-| `--library` | system default | Photos library path |
-
-Labels: `selfie` · `people` · `group` · `landscape` · `nature` · `food` · `object` · `document` · `animal` · `vehicle` · `building` · `other`
-
-#### `vision-albums` — Create albums in Photos.app
-
-```bash
-python photo_organize.py vision-albums rajeev_vision_labels.json
-```
-
-Creates `Vision-Selfie`, `Vision-People`, etc. albums. Safe to re-run.
-
-#### `backup` — Upload to GCS
-
-```bash
-python photo_organize.py backup rajeev_vision_labels.json
-```
-
-Uploads to `gs://<GCS_BUCKET>/Vision-<Label>/`. Already-uploaded files are skipped.
-
-GCS layout:
-```
-gs://rajeev-iphone-photo-archive/
-├── metadata/catalog/vision_labels_2026-06-22.json
-├── Vision-Selfie/
-├── Vision-People/
-├── Vision-Landscape/
-└── ...
-```
-
-#### `plan` / `execute` — Rule-based classification (optional)
-
-Quick pass using metadata rules (blur, darkness, face tags) without AI:
+### Optional rule-based pass
 
 ```bash
 python photo_organize.py plan --out plan.json
+python photo_organize.py execute plan.json --dry-run
 python photo_organize.py execute plan.json
 ```
 
-### Full workflow
-
-```bash
-# 1. Start Ollama (separate terminal)
-ollama serve
-
-# 2. Download iCloud-only photos
-python photo_organize.py download
-
-# 3. Classify with AI (auto-saves every 10, resume-safe)
-caffeinate -i python photo_organize.py vision --out rajeev_vision_labels.json
-
-# 4. Create Vision-* albums in Photos.app
-python photo_organize.py vision-albums rajeev_vision_labels.json
-
-# 5. Review albums in Photos.app — delete what you don't want
-
-# 6. Back up to GCS
-python photo_organize.py backup rajeev_vision_labels.json
-```
-
-### Tips
-
-**Check progress mid-run:**
-```bash
-python -c "
-import json
-from collections import Counter
-d = json.load(open('vision_labels.json'))
-print(f'Classified: {len(d)}')
-for label, count in Counter(v.get('label','?') for v in d.values()).most_common():
-    print(f'  {label:15s} {count}')
-"
-```
-
-**Check local vs iCloud counts:**
-```bash
-source .venv/bin/activate
-python -c "
-import osxphotos
-db = osxphotos.PhotosDB()
-photos = db.photos(images=True, movies=False)
-print(f'Local: {sum(1 for p in photos if not p.ismissing)}')
-print(f'iCloud only: {sum(1 for p in photos if p.ismissing)}')
-print(f'Total: {len(photos)}')
-"
-```
+The execution phase creates review albums such as `Archived-to-GCP` and `Plan-to-Delete`; it does not delete photos.
 
 ---
 
-## Deep Research
+## 2. Memory Store
 
-A LangGraph workflow that researches any topic iteratively — generates sub-questions, searches the web and Reddit, synthesizes findings, reflects on gaps, and loops until it has enough to write a full report.
+The Memory Store provides a local SQLite data model plus ChromaDB semantic search for notes. It also contains document classification and structured-field extraction logic for leases, visas, medical records, insurance documents, tax documents, and identity documents.
 
-### Prerequisites
+### Example output
 
-`ANTHROPIC_API_KEY` in `.env`. Uses `claude-sonnet-4-6` by default (override with `ANTHROPIC_MODEL`).
+![Memory Store example output](docs/images/memory-store-output.svg)
+
+*Synthetic semantic-search results; no personal notes or document content is included.*
+
+### Memory workflow
+
+```mermaid
+flowchart LR
+    sources[Notes or documents] --> ingest[Ingestion adapter]
+    ingest --> normalize[Normalize text and metadata]
+    normalize --> sqlite[(SQLite)]
+    normalize --> vectors[(ChromaDB)]
+    normalize --> extract[Optional Claude classification and extraction]
+    extract --> sqlite
+    sqlite --> cli[CLI: list, show, stats]
+    vectors --> search[Semantic search]
+    cli --> user[Local results]
+    search --> user
+```
+
+### Ingestion setup
+
+For Notion, share the target database with your integration and set both `NOTION_TOKEN` and `NOTION_DATABASE_ID`. For Google Drive, enable the Drive API, create a Desktop OAuth client, and save the downloaded client JSON as `memory_store/gdrive_credentials.json`; the generated OAuth token is stored locally and excluded from Git.
+
+### Available CLI
+
+```bash
+python memory_store/cli.py --help
+python memory_store/cli.py sync-notion --limit 10
+python memory_store/cli.py auth-gdrive
+python memory_store/cli.py ingest /path/to/document.pdf
+python memory_store/cli.py ingest "https://drive.google.com/file/d/.../view"
+python memory_store/cli.py search "query" --n 5
+python memory_store/cli.py list --domain work --limit 50
+python memory_store/cli.py show "title keyword"
+python memory_store/cli.py stats
+python memory_store/cli.py docs
+python memory_store/cli.py doc-show 1
+```
+
+Runtime data is stored under `memory_store/memory.db` and `memory_store/chroma/`, both excluded from Git.
+
+---
+
+## 3. Deep Research
+
+The Deep Research workflow uses LangGraph to turn a broad question into focused sub-questions, search the web and Reddit in parallel, synthesize findings, critique remaining gaps, and repeat until the report is ready or the iteration limit is reached.
+
+### Example output
+
+![Deep Research example output](docs/images/deep-research-output.svg)
+
+*Synthetic run summary showing the plan → search → analyze → reflect loop.*
+
+### Research graph
+
+```mermaid
+flowchart TD
+    topic[Research topic] --> plan[Claude: plan 3-5 sub-questions]
+    plan --> web[Tavily or DuckDuckGo web search]
+    plan --> reddit[DuckDuckGo Reddit search]
+    web --> analyze[Claude: synthesize cited findings]
+    reddit --> analyze
+    analyze --> reflect[Claude: identify evidence gaps]
+    reflect -->|More research needed and budget remains| plan
+    reflect -->|Done or max iterations reached| report[Claude: final Markdown report]
+```
 
 ### Usage
 
 ```bash
-python main.py "your research topic"
+# Print a report to the terminal
+python main.py "best practices for data pipeline monitoring"
 
-# More thorough (more iterations = more sources)
-python main.py "impact of sleep on athletic performance" --max-iterations 3
+# Use three plan/search/analyze/reflect iterations
+python main.py "best practices for data pipeline monitoring" --max-iterations 3
 
-# Save report to file
-python main.py "best practices for data pipeline monitoring" --out Armpit Lymph Node Hard Swelling, Cancer, and Mammogram.md
+# Save the final Markdown report
+python main.py "best practices for data pipeline monitoring" \
+  --max-iterations 3 \
+  --out deep_research_reports/data-pipeline-monitoring.md
 ```
 
-### How it works
-
-```
-plan → search_web ─┐
-                   ├→ analyze → reflect ─→ (loop back or) summarize
-     search_reddit ┘
-```
-
-Each iteration:
-1. **Plan** — Claude generates 3–5 focused sub-questions
-2. **Search** — Tavily (web) + DuckDuckGo (Reddit) run in parallel
-3. **Analyze** — Claude synthesizes findings into bullet points with citations
-4. **Reflect** — Claude decides if gaps remain; if yes, loops with new sub-questions
-5. **Summarize** — Final structured markdown report with executive summary, key findings, community perspectives, and numbered sources
-
-### Output format
-
-```markdown
-# Research Report: <topic>
-
-## Executive Summary
-## Key Findings
-## Detailed Analysis
-## Community Perspectives (Reddit)
-## Open Questions / Limitations
-## Sources
-```
+`ANTHROPIC_API_KEY` is required. `TAVILY_API_KEY` is optional; without it, web search falls back to DuckDuckGo. Generated reports under `deep_research_reports/` are excluded from Git.
 
 ---
 
-## Portfolio Analyzer
+## 4. Portfolio Toolkit
 
-Four scripts that work together to analyze a Fidelity account export:
+The Portfolio Toolkit is a group of local scripts for Fidelity CSV exports. It separates deterministic calculations from AI-generated commentary and never places trades.
 
-- `portfolio_analyzer.py` — one-shot analysis of a CSV export: allocation, concentration risk, performance, tax-location check, charts
-- `market_check.py` — optional daily add-on that marks current holdings to live market prices and asks Claude to flag anything worth a second look
-- `trade_analyzer.py` — no AI, just your own buy/sell history per symbol next to a live quote, so you're never guessing what price you paid last time
-- `telegram_listener.py` — remote control for `trade_analyzer.py` from your phone via Telegram
+> [!CAUTION]
+> This project is informational software, not financial, investment, tax, or legal advice. Validate calculations against official account statements and trade confirmations.
 
-All four are informational only — **none of them ever place a trade or tell you to buy/sell anything.** Everything under `fidelity_data/` (your actual account data, reports, charts) is gitignored and never leaves your machine; no data is uploaded anywhere.
+### Example output
 
-### Prerequisites
+![Portfolio Toolkit example output](docs/images/portfolio-toolkit-output.svg)
 
-**A Fidelity CSV export.** From Fidelity.com: Accounts & Trade → Portfolio → Positions → **Download** (or **Export**). Save it into `fidelity_data/` in this repo — the filename pattern `Portfolio_Positions_<date>.csv` (Fidelity's default) is what both scripts look for.
+*Synthetic Telegram response using a fictional symbol and values; it is not investment advice.*
 
-**Finnhub API key** (for `market_check.py` only) — free at [finnhub.io/register](https://finnhub.io/register), free tier is 60 calls/min which comfortably covers a few dozen holdings. Add it to `.env` as `FINNHUB_API_KEY`.
+### Portfolio data flow
 
-**Anthropic API key** (for `market_check.py` only) — same `ANTHROPIC_API_KEY` used by Deep Research.
+```mermaid
+flowchart TD
+    positions[Fidelity positions CSV] --> analyzer[portfolio_analyzer.py]
+    analyzer --> enriched[Enriched positions CSV]
+    analyzer --> report[Allocation and risk report]
+    analyzer --> charts[PNG charts]
 
-**Telegram bot** (optional, for pushing the daily summary to your phone instead of only a local file):
-1. Message [@BotFather](https://t.me/BotFather) in Telegram → `/newbot` → copy the token it gives you into `.env` as `TELEGRAM_BOT_TOKEN`
-2. Generate one update so Telegram has something to show: message your new bot directly (any text works), or — for a channel instead of a DM — add the bot as a channel admin (needs "Post Messages" permission) and post any message there
-3. Look up your `chat_id`:
-   ```bash
-   python3 -c "
-   from dotenv import load_dotenv; load_dotenv()
-   import os, httpx
-   token = os.getenv('TELEGRAM_BOT_TOKEN')
-   print(httpx.get(f'https://api.telegram.org/bot{token}/getUpdates').json())
-   "
-   ```
-   The `chat.id` field in the response is what goes in `.env` as `TELEGRAM_CHAT_ID`.
+    enriched --> market[market_check.py]
+    finnhub[Finnhub live quotes] --> market
+    market --> claude[Claude observations]
+    claude --> local[Timestamped local report]
+    claude --> telegram[Optional Telegram push]
 
-If both vars are set, `market_check.py` pushes the header + Claude's summary (not the full raw-data dump) to that chat every run. If unset, it silently skips Telegram and just writes the local report file as before.
-
-### `portfolio_analyzer.py` — one-shot CSV analysis
-
-```bash
-python portfolio_analyzer.py                      # auto-picks the newest
-                                                    # fidelity_data/Portfolio_Positions_*.csv
-python portfolio_analyzer.py path/to/export.csv    # or point at one explicitly
+    exports[Accounts_History*.csv exports] --> ledger[transaction_store.py]
+    ledger --> master[(master_transactions.csv)]
+    master --> trades[trade_analyzer.py]
+    finnhub --> trades
+    trades --> terminal[Terminal lookup]
+    trades --> bot[Telegram listener]
 ```
 
-Produces, all written to `fidelity_data/output/`:
+### Directory convention
 
-- **Overview** — total value, breakdown by account (with tax status: taxable brokerage vs. Roth/Traditional IRA/HSA/401(k)), unique holdings
-- **Asset allocation** — by class (stock/ETF/mutual fund/money market/target-date) and by sector, as horizontal bar charts
-- **Concentration risk** — single positions >10% of the portfolio, sectors >30% (excluding inherently-diversified buckets like broad index funds), and overlapping funds doing the same job (e.g. holding both VOO and SPY)
-- **Performance** — gain/loss % per position, top winners/losers, overall portfolio return
-- **Tax-location check** — flags high-dividend/high-income funds sitting in a taxable account that would usually be more efficient in a Roth/IRA/HSA
-- **Charts** — asset allocation, sector breakdown, account distribution, top 10 holdings (PNGs)
-- **Observations** — plain data-driven notes, explicitly framed as not-advice
+```text
+fidelity_data/
+├── Portfolio_Positions_*.csv
+├── order_transactions/
+│   ├── Accounts_History*.csv
+│   └── master_transactions.csv
+└── output/
+    ├── portfolio_report_*.txt
+    ├── positions_enriched_*.csv
+    ├── chart_*.png
+    └── market_check_*.txt
+```
 
-Sector/asset-class classification is a hand-maintained table (`SECURITY_INFO`) in the script itself — no live data lookup, no API key needed to run this one. If a new export has a symbol the table doesn't recognize, the script prints exactly what to add.
+The complete `fidelity_data/` directory is excluded from Git.
 
-### `market_check.py` — live morning check
+### Portfolio snapshot analysis
+
+```bash
+# Automatically use the newest Fidelity positions export
+python portfolio_analyzer.py
+
+# Or provide a specific export and output directory
+python portfolio_analyzer.py /path/to/Portfolio_Positions.csv --out /path/to/output
+```
+
+The analyzer cleans Fidelity formatting, classifies known securities, calculates allocation and performance, identifies position/sector concentration and overlapping funds, performs a basic tax-location check, and creates four charts.
+
+Security classification is maintained in the `SECURITY_INFO` mapping inside `portfolio_analyzer.py`. New symbols are reported as unclassified so the mapping can be updated explicitly.
+
+### Live market check
 
 ```bash
 python market_check.py
 ```
 
-Runs a mark-to-market pass against your current holdings and an LLM summary:
+This command loads the newest enriched positions file, verifies that the US market is open, fetches live Finnhub quotes, recalculates portfolio weights, and asks Claude for concise observations based on the supplied portfolio facts. It writes a timestamped report and optionally pushes the summary to Telegram.
 
-1. Loads the newest `positions_enriched_*.csv` (output of `portfolio_analyzer.py` — run that first)
-2. Checks Finnhub's market-status endpoint; if the market's closed (weekend, holiday, after-hours) it prints that and exits without calling the LLM, so you never get a summary based on stale prices
-3. Pulls a live quote per holding, recomputes portfolio value/allocation % with today's prices
-4. Re-runs the same concentration/overlap/tax-location rules from `portfolio_analyzer.py` against the live numbers
-5. Sends the day's movers plus any already-flagged positions to Claude, which writes 4-8 bullet observations — hard-blocked by its system prompt from ever saying "buy," "sell," or naming a share count or price target
-6. Saves the report to `fidelity_data/output/market_check_<date>_<time>.txt`
-7. If `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` are set, pushes the summary to Telegram too — otherwise this step is a silent no-op
-
-### Keeping transaction history over time
-
-Fidelity's transaction export only covers whatever date range you picked when downloading it — it's not a full history. To avoid silently losing older trades once they age out of your next export, `trade_analyzer.py` (and `telegram_listener.py`, through it) auto-merges every `Accounts_History*.csv` in `fidelity_data/order_transactions/` into a single deduplicated `master_transactions.csv` on every run, via `transaction_store.py`.
-
-**Workflow:** whenever you have a new export, just drop the CSV into `fidelity_data/order_transactions/` — no renaming, no manual merge step. The next time you run `trade_analyzer.py` or message the Telegram bot, new transactions are automatically folded into the master ledger (deduplicated by date/account/action/symbol/price/quantity/amount, so re-uploading overlapping date ranges is harmless — already-seen transactions are recognized and skipped, never double-counted). Nothing already in the ledger is ever removed just because a later export doesn't happen to include it.
-
-```bash
-python merge_transactions.py   # optional — merges and reports what was added,
-                                # useful right after uploading a new export if
-                                # you want to see the count before running anything else
-```
-
-### `trade_analyzer.py` — "what did I actually pay for this last time"
-
-```bash
-python trade_analyzer.py AMD    # full buy/sell history + live price for one symbol
-python trade_analyzer.py        # realized P&L summary across every symbol you've traded
-```
-
-No AI involved — this is a pure lookup tool for the very common problem of forgetting what price you paid last time you bought or sold something, so you can't tell if selling today would lock in a gain or a loss.
-
-Reads the accumulated `master_transactions.csv` (see "Keeping transaction history over time" above — export from Fidelity: Accounts & Trade → Activity & Orders → **Download**), FIFO-matches your buys to sells **per account per symbol** (tax lots are account-specific), and:
-
-- **Per symbol** (`python trade_analyzer.py AMD`) — every buy/sell in the export with date/price/account, a live quote next to each one showing the gain/loss if that lot were sold right now, which lots are still open, and which round-trips already closed with their realized gain/loss and holding period. Since the export only covers a fixed date range, any shares bought before that window won't have an exact price on record here — those are called out explicitly and backed up by Fidelity's own blended average cost basis (from `portfolio_analyzer.py`'s enriched CSV) so nothing is silently missing, just less precise.
-- **No symbol** (`python trade_analyzer.py`) — realized P&L total, win rate, avg winner/loser, total fees paid, dividends received, and your most-traded symbols, so you can see honestly whether frequent trading in a name has actually been costing you or not.
-
-`CVSA` is deliberately skipped for live quotes here too, for the same reason as in `market_check.py` — see `NO_QUOTE_SYMBOLS`.
-
-### `telegram_listener.py` — remote control from your phone
-
-`market_check.py`'s Telegram integration is one-way (script → your phone). This adds the other direction: message your bot and get `trade_analyzer.py` results back, without touching the laptop.
-
-```bash
-python telegram_listener.py   # foreground, for testing
-./setup_telegram_listener.sh  # installs as an always-on launchd daemon
-```
-
-Long-polls Telegram for new messages and replies with the same output `trade_analyzer.py` prints locally:
-
-| Message | Reply |
-|---|---|
-| `AMD` (or any symbol) | Compact summary: live price, open-lot cost range with best/worst case if sold now, realized total, Fidelity's blended all-accounts position — sized for a phone screen |
-| `AMD full` | The complete transaction-by-transaction log (what `trade_analyzer.py AMD` prints locally) |
-| `summary` | Realized P&L summary across everything you've traded |
-| `help` | Lists these commands |
-
-**Security:** only messages from your own `TELEGRAM_CHAT_ID` (set in `.env`) are ever acted on — anything from a different chat is logged locally and silently ignored, never replied to. Symbol input is validated against a strict pattern before being used, and every command maps to a fixed, pre-written function — there's no way to get it to run arbitrary code.
-
-**Reality check on "remote":** this is a local listener, not a cloud service. Your Mac still needs to be powered on, awake, and connected to the internet for a message to do anything — Telegram polling doesn't need any inbound ports opened, but it does need the process running. If you want something that works even with the Mac fully off, that requires actually hosting the scripts (and your Fidelity data) somewhere else, which is a different, bigger project — this keeps everything local by design, same as every other script in this repo.
-
-Installed via `setup_telegram_listener.sh` as `com.rajeevsingh.telegramlistener` — unlike the scheduled `market_check.py` job, this one uses `RunAtLoad` + `KeepAlive` so it starts immediately and relaunches itself if it ever crashes:
-
-```bash
-launchctl list | grep telegramlistener                                      # confirm it's running
-tail -f fidelity_data/output/telegram_listener.log                          # watch activity
-launchctl unload ~/Library/LaunchAgents/com.rajeevsingh.telegramlistener.plist   # stop it
-```
-
-### Running it automatically at market open
-
-`setup_launchd.sh` installs a macOS `launchd` job (`com.rajeevsingh.marketcheck.plist`) that runs `market_check.py` three times on weekdays — 9:35am (open), 12:30pm (midday), and 3:45pm (close), local time:
+The included schedule runs at 9:35 a.m., 12:30 p.m., and 3:45 p.m. on weekdays in the Mac's local timezone:
 
 ```bash
 ./setup_launchd.sh
+launchctl list | grep marketcheck
+tail -f fidelity_data/output/market_check.log
 ```
 
+The setup script generates a machine-local plist using the current checkout path and generic label `com.aiworkflows.marketcheck`. The schedule uses launchd weekdays `2–6` (Monday–Friday). The stated times follow the Mac's local timezone; they align with US market hours only when the Mac is configured for Eastern Time.
+
+### Transaction ledger and trade lookup
+
+Drop new Fidelity transaction exports into `fidelity_data/order_transactions/`. On each run, `transaction_store.py` merges all `Accounts_History*.csv` files into an append-only, deduplicated `master_transactions.csv`. Removing a source export after it has been merged does not remove its transactions from the master ledger.
+
 ```bash
-launchctl list | grep marketcheck                     # confirm it's loaded
-launchctl start com.rajeevsingh.marketcheck            # trigger a run right now, for testing
-tail -f fidelity_data/output/market_check.log          # watch stdout
-launchctl unload ~/Library/LaunchAgents/com.rajeevsingh.marketcheck.plist   # stop it
+# Optional explicit merge with counts
+python merge_transactions.py
+
+# Overall realized P&L summary using FIFO matching
+python trade_analyzer.py
+
+# Full history, open lots, live quote, and realized round trips for one symbol
+python trade_analyzer.py AMD
 ```
+
+FIFO matching is performed per account and symbol. If a sell references shares bought before the earliest imported export, the script reports that portion as unmatched rather than inventing a cost basis.
+
+### Telegram trade lookup
+
+After configuring `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`:
+
+```bash
+# Foreground test
+python telegram_listener.py
+
+# Install the persistent macOS listener
+./setup_telegram_listener.sh
+launchctl list | grep telegramlistener
+```
+
+| Telegram message | Response |
+|---|---|
+| `AMD` | Compact live price, open-lot range, realized total, and blended position |
+| `AMD full` | Complete transaction-by-transaction output |
+| `summary` | Realized P&L summary across the imported ledger |
+| `help` | Command reference |
+
+The listener processes commands only from the configured chat ID. The Mac must remain powered on, awake, and online because the bot runs locally.
+
+---
+
+## Privacy boundaries
+
+| Workflow | Stays local | May leave the Mac |
+|---|---|---|
+| Photo Organizer | Photo analysis through local Ollama; local albums/folders | Reviewed archive files and JSON catalog when GCS backup is used |
+| Memory Store | SQLite, ChromaDB, local search | Notion/Drive content through their APIs; document text/images sent to Anthropic when extraction is used |
+| Deep Research | Final report file and local execution state | Topic, prompts, and gathered source text sent to Anthropic; searches sent to Tavily/DuckDuckGo/Reddit |
+| Portfolio Toolkit | Raw Fidelity CSVs, master ledger, deterministic reports/charts | Symbols and quote requests sent to Finnhub; summarized portfolio facts sent to Anthropic; selected summaries sent to Telegram when enabled |
+
+## Generated and private files
+
+The current `.gitignore` excludes:
+
+- `.env` and credential JSON patterns
+- Python virtual environments and caches
+- photo label catalogs and rule plans
+- Memory Store SQLite/ChromaDB data
+- generated deep-research reports
+- the entire `fidelity_data/` tree
+
+Before publishing a fork, run your own secret scanner against the full Git history; `.gitignore` prevents future commits but does not erase files committed in the past.
+
+## Repository layout
+
+```text
+.
+├── photo_organize.py              # Photo CLI and Ollama/GCS workflows
+├── photo_quality.py               # Blur, darkness, and perceptual-hash utilities
+├── photo_rules.py                 # Deterministic photo classification rules
+├── memory_store/
+│   ├── cli.py                     # Memory/document CLI
+│   ├── store.py                   # SQLite and ChromaDB persistence
+│   ├── document.py                # Claude document classification/extraction
+│   └── ingest/                    # Notion, Drive, PDF, and image adapters
+├── main.py                        # Deep Research CLI
+├── research_graph.py              # LangGraph research state machine
+├── search_tools.py                # Tavily, DuckDuckGo, and Reddit helpers
+├── portfolio_analyzer.py          # Fidelity positions analysis and charts
+├── market_check.py                # Live quotes and Claude observations
+├── transaction_store.py           # Deduplicated transaction master ledger
+├── merge_transactions.py          # Manual ledger sync command
+├── trade_analyzer.py              # FIFO trade-history lookup
+├── telegram_listener.py           # Remote Telegram trade lookup
+├── generate_launchd_plist.py      # Portable launch-agent generator
+├── setup_launchd.sh               # Market-check scheduler installer
+├── setup_telegram_listener.sh     # Telegram listener installer
+├── tests/                         # Public-readiness unit tests
+└── requirements.txt
+```
+
+## Public-release status
+
+The repository is currently **private** on GitHub. Public-readiness work completed in this tree includes portable launch-agent generation, generic configuration examples, restored Memory Store ingestion adapters, synthetic README visuals, unit tests, CI secret scanning, `SECURITY.md`, and `CONTRIBUTING.md`.
+
+A scan of the publishable current tree found no API tokens, service-account private keys, Fidelity exports, photo catalogs, generated reports, or local databases. A full-history Gitleaks scan found one removed legacy workflow containing an OpenAI API-key pattern; that historical object must be removed before changing visibility.
+
+- Choose and add a `LICENSE`; without one, others can view the code but do not receive permission to reuse it.
+- Rewrite the Git history to remove the flagged legacy workflow, force-push the cleaned history, and rerun Gitleaks.
+- Rotate any credential that has appeared in a chat, issue, CI log, terminal recording, or other external system, even if it was never committed.
+- Review the final staged diff before pushing and changing visibility.
+
+After those final checks and the license decision, changing the GitHub repository from private to public should be reasonable.
+
+## Future improvements
+
+- Add automated tests for CSV cleaning, transaction deduplication, and FIFO matching.
+- Add cached market data and clearer provenance/timestamps to AI-generated observations.
+- Add structured logging and health checks for the two background jobs.

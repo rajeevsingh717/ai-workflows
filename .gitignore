@@ -17,9 +17,17 @@ vision_labels.json
 # memory store personal data
 memory_store/memory.db
 memory_store/chroma/
+memory_store/downloads/
+memory_store/gdrive_credentials.json
+memory_store/gdrive_token.json
 
 # research reports
 deep_research_reports/
 
 # personal financial data
 fidelity_data/
+
+# local test/tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

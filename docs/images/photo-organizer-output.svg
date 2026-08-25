@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560" role="img" aria-labelledby="title desc">
+  <title id="title">Photo Organizer example output</title><desc id="desc">Terminal preview of local vision classification and label totals.</desc>
+  <rect width="1000" height="560" rx="18" fill="#0d1117"/><rect x="1" y="1" width="998" height="558" rx="17" fill="none" stroke="#30363d" stroke-width="2"/>
+  <circle cx="34" cy="30" r="7" fill="#ff7b72"/><circle cx="58" cy="30" r="7" fill="#d29922"/><circle cx="82" cy="30" r="7" fill="#3fb950"/>
+  <text x="115" y="37" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17">photo-organizer — local Ollama classification</text><line x1="0" y1="60" x2="1000" y2="60" stroke="#30363d"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20">
+    <text x="34" y="105" fill="#79c0ff">$ python photo_organize.py vision --out vision_labels.json</text>
+    <text x="34" y="148" fill="#c9d1d9">Opening Photos library: system default</text><text x="34" y="184" fill="#c9d1d9">Analyzing 12,118 media files with llama3.2-vision...</text>
+    <text x="34" y="220" fill="#3fb950">✓ 12,118 classified   ✓ checkpoint saved   ✓ resume-safe</text><text x="34" y="272" fill="#f0f6fc" font-weight="600">Vision catalog summary</text>
+    <text x="54" y="312" fill="#c9d1d9">People</text><text x="300" y="312" fill="#79c0ff">4,543</text><rect x="390" y="294" width="390" height="20" rx="4" fill="#1f6feb"/>
+    <text x="54" y="352" fill="#c9d1d9">Landscape</text><text x="300" y="352" fill="#79c0ff">2,418</text><rect x="390" y="334" width="207" height="20" rx="4" fill="#2f81f7"/>
+    <text x="54" y="392" fill="#c9d1d9">Group</text><text x="300" y="392" fill="#79c0ff">1,397</text><rect x="390" y="374" width="120" height="20" rx="4" fill="#58a6ff"/>
+    <text x="54" y="432" fill="#c9d1d9">Document</text><text x="300" y="432" fill="#79c0ff">289</text><rect x="390" y="414" width="34" height="20" rx="4" fill="#79c0ff"/>
+    <text x="34" y="492" fill="#3fb950">Next: review Vision-* albums, then optionally back up to GCS.</text><text x="34" y="528" fill="#8b949e">Example output — synthetic values, no personal photo data.</text>
+  </g>
+</svg>

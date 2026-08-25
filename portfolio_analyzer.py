@@ -30,10 +30,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import pandas as pd
 
 # --------------------------------------------------------------------------
@@ -48,17 +44,28 @@ INK_MUTED = "#898781"
 GRIDLINE = "#e1e0d9"
 BASELINE = "#c3c2b7"
 
-plt.rcParams.update({
-    "figure.facecolor": SURFACE,
-    "axes.facecolor": SURFACE,
-    "text.color": INK_PRIMARY,
-    "axes.edgecolor": BASELINE,
-    "axes.labelcolor": INK_SECONDARY,
-    "xtick.color": INK_MUTED,
-    "ytick.color": INK_MUTED,
-    "font.family": "sans-serif",
-    "font.size": 10,
-})
+def _plotting():
+    """Import Matplotlib only when charts are rendered, not for CLI help/imports."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
+
+    if not getattr(_plotting, "configured", False):
+        plt.rcParams.update({
+            "figure.facecolor": SURFACE,
+            "axes.facecolor": SURFACE,
+            "text.color": INK_PRIMARY,
+            "axes.edgecolor": BASELINE,
+            "axes.labelcolor": INK_SECONDARY,
+            "xtick.color": INK_MUTED,
+            "ytick.color": INK_MUTED,
+            "font.family": "sans-serif",
+            "font.size": 10,
+        })
+        _plotting.configured = True
+    return plt, mticker
 
 # --------------------------------------------------------------------------
 # Security classification — (asset_class, sector).
@@ -447,6 +454,7 @@ def _style_ax(ax):
 
 
 def chart_allocation_bar(series: pd.Series, total: float, title: str, out_path: Path):
+    plt, mticker = _plotting()
     series = series.sort_values(ascending=True)
     fig, ax = plt.subplots(figsize=(8, max(2.5, 0.5 * len(series) + 1)))
     colors = (CAT * ((len(series) // len(CAT)) + 1))[:len(series)][::-1]
@@ -465,6 +473,7 @@ def chart_allocation_bar(series: pd.Series, total: float, title: str, out_path: 
 
 
 def chart_account_distribution(df: pd.DataFrame, out_path: Path):
+    plt, _ = _plotting()
     d = df.copy()
     d["tax_status"] = d["account_name"].apply(account_tax_status)
     d["label"] = d["account_name"] + " (…" + d["account_number"].str[-4:] + ")"
@@ -493,6 +502,7 @@ def chart_account_distribution(df: pd.DataFrame, out_path: Path):
 
 
 def chart_top_holdings(df: pd.DataFrame, out_path: Path, n: int = 10):
+    plt, mticker = _plotting()
     by_symbol = df.groupby(["symbol", "description"], as_index=False)["current_value"].sum()
     top = by_symbol.sort_values("current_value", ascending=False).head(n).sort_values("current_value", ascending=True)
     top["label"] = top["symbol"].apply(friendly)

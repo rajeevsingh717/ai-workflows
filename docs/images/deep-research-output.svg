@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560" role="img" aria-labelledby="title desc">
+  <title id="title">Deep Research example output</title><desc id="desc">Terminal preview of planning, parallel search, reflection, and report generation.</desc>
+  <rect width="1000" height="560" rx="18" fill="#0d1117"/><rect x="1" y="1" width="998" height="558" rx="17" fill="none" stroke="#30363d" stroke-width="2"/>
+  <circle cx="34" cy="30" r="7" fill="#ff7b72"/><circle cx="58" cy="30" r="7" fill="#d29922"/><circle cx="82" cy="30" r="7" fill="#3fb950"/>
+  <text x="115" y="37" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17">deep-research — LangGraph run</text><line x1="0" y1="60" x2="1000" y2="60" stroke="#30363d"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19">
+    <text x="34" y="104" fill="#79c0ff">$ python main.py "data pipeline monitoring" --max-iterations 2</text>
+    <text x="34" y="151" fill="#d2a8ff">PLAN</text><text x="145" y="151" fill="#c9d1d9">4 focused sub-questions generated</text>
+    <text x="34" y="193" fill="#ffa657">SEARCH</text><text x="145" y="193" fill="#c9d1d9">16 web + 9 Reddit sources collected in parallel</text>
+    <text x="34" y="235" fill="#7ee787">ANALYZE</text><text x="145" y="235" fill="#c9d1d9">10 cited findings synthesized</text>
+    <text x="34" y="277" fill="#ffdf5d">REFLECT</text><text x="145" y="277" fill="#c9d1d9">gap found: ownership and alert-fatigue practices</text>
+    <path d="M65 300 C65 340 120 340 145 312" fill="none" stroke="#8b949e" stroke-width="2" stroke-dasharray="6 6"/>
+    <text x="34" y="354" fill="#d2a8ff">PLAN 2</text><text x="145" y="354" fill="#c9d1d9">targeted follow-up questions generated</text>
+    <text x="34" y="396" fill="#7ee787">DONE</text><text x="145" y="396" fill="#c9d1d9">evidence sufficient after 2 iterations</text>
+    <rect x="34" y="430" width="932" height="70" rx="8" fill="#161b22" stroke="#30363d"/><text x="54" y="460" fill="#f0f6fc" font-weight="600">Research report saved</text><text x="54" y="486" fill="#8b949e">deep_research_reports/data-pipeline-monitoring.md</text>
+    <text x="34" y="536" fill="#8b949e">Example output — synthetic counts and topic.</text>
+  </g>
+</svg>

@@ -5,14 +5,14 @@
 # it ever exits or crashes.
 set -euo pipefail
 
-PLIST_NAME="com.rajeevsingh.telegramlistener.plist"
-SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$PLIST_NAME"
+PLIST_NAME="com.aiworkflows.telegramlistener.plist"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 
 mkdir -p "$HOME/Library/LaunchAgents"
-mkdir -p "$(dirname "$0")/fidelity_data/output"
-
-cp "$SRC" "$DEST"
+mkdir -p "$PROJECT_ROOT/fidelity_data/output"
+"$PROJECT_ROOT/.venv/bin/python3" "$PROJECT_ROOT/generate_launchd_plist.py" \
+  telegram-listener "$DEST" --project-root "$PROJECT_ROOT"
 
 launchctl unload "$DEST" 2>/dev/null || true
 launchctl load "$DEST"

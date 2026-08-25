@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560" role="img" aria-labelledby="title desc">
+  <title id="title">Memory Store example output</title><desc id="desc">Terminal preview of semantic search with ranked local note results.</desc>
+  <rect width="1000" height="560" rx="18" fill="#0d1117"/><rect x="1" y="1" width="998" height="558" rx="17" fill="none" stroke="#30363d" stroke-width="2"/>
+  <circle cx="34" cy="30" r="7" fill="#ff7b72"/><circle cx="58" cy="30" r="7" fill="#d29922"/><circle cx="82" cy="30" r="7" fill="#3fb950"/>
+  <text x="115" y="37" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17">memory-store — semantic search</text><line x1="0" y1="60" x2="1000" y2="60" stroke="#30363d"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19">
+    <text x="34" y="105" fill="#79c0ff">$ python memory_store/cli.py search "data pipeline reliability"</text>
+    <text x="34" y="155" fill="#f0f6fc" font-weight="600">[0.87] Monitoring checklist</text><text x="54" y="188" fill="#8b949e">domain=work  source=notion  tags=engineering, operations</text><text x="54" y="222" fill="#c9d1d9">Track freshness, volume, schema drift, failed retries, and ownership...</text>
+    <line x1="34" y1="252" x2="966" y2="252" stroke="#21262d"/><text x="34" y="294" fill="#f0f6fc" font-weight="600">[0.79] Incident review template</text><text x="54" y="327" fill="#8b949e">domain=work  source=document  tags=postmortem</text><text x="54" y="361" fill="#c9d1d9">Capture impact, detection gap, root cause, remediation, and follow-up...</text>
+    <line x1="34" y1="391" x2="966" y2="391" stroke="#21262d"/><text x="34" y="433" fill="#f0f6fc" font-weight="600">[0.72] Data quality notes</text><text x="54" y="466" fill="#8b949e">domain=study  source=notion  tags=data-engineering</text><text x="54" y="500" fill="#c9d1d9">Semantic match found even though the exact query phrase was absent.</text>
+    <text x="34" y="536" fill="#8b949e">Example output — synthetic notes, no personal content.</text>
+  </g>
+</svg>
