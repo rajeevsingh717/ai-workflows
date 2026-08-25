@@ -458,10 +458,9 @@ Before publishing a fork, run your own secret scanner against the full Git histo
 
 The repository is currently **private** on GitHub. Public-readiness work completed in this tree includes portable launch-agent generation, generic configuration examples, restored Memory Store ingestion adapters, synthetic README visuals, unit tests, CI secret scanning, `SECURITY.md`, and `CONTRIBUTING.md`.
 
-A scan of the publishable current tree found no API tokens, service-account private keys, Fidelity exports, photo catalogs, generated reports, or local databases. A full-history Gitleaks scan found one removed legacy workflow containing an OpenAI API-key pattern; that historical object must be removed before changing visibility.
+A scan of the publishable current tree found no API tokens, service-account private keys, Fidelity exports, photo catalogs, generated reports, or local databases. A historical OpenAI API-key finding was removed by rewriting the affected Git history, and the complete rewritten history now passes Gitleaks.
 
 - Choose and add a `LICENSE`; without one, others can view the code but do not receive permission to reuse it.
-- Rewrite the Git history to remove the flagged legacy workflow, force-push the cleaned history, and rerun Gitleaks.
 - Rotate any credential that has appeared in a chat, issue, CI log, terminal recording, or other external system, even if it was never committed.
 - Review the final staged diff before pushing and changing visibility.
 
